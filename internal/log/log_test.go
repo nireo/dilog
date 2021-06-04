@@ -66,7 +66,12 @@ func testOutOfRangeErr(t *testing.T, log *Log) {
 	}
 
 	if read != nil {
-		t.Error("read is not nil")
+		t.Error("read should be nil")
+	}
+
+	apiErr := err.(api.ErrOffsetOutOfRange)
+	if uint64(1) != apiErr.Offset {
+		t.Error("offsets don't match")
 	}
 }
 
