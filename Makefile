@@ -15,4 +15,3 @@ gencert:
 		-config=test/ca-config.json \
 		-profile=server \
 		test/server-csr.json | cfssljson -bare server
-	mv *.pem *.csr ${CONFIG_PATH}

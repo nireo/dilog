@@ -1,5 +1,9 @@
 {
-		"CN": "Dilog CA",
+		"CN": "127.0.0.1",
+		"hosts": [
+				"localhost",
+				"127.0.0.1"
+		],
 		"key": {
 				"algo": "rsa",
 				"size": 2048
@@ -10,7 +14,7 @@
 						"L": "Helsinki",
 						"ST": "Uusimaa",
 						"O": "Non existing",
-						"OU": "CA Services"
+						"OU": "Distributed Services"
 				}
 		]
 }
