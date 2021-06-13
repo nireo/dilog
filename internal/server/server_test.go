@@ -18,6 +18,8 @@ func TestServer(t *testing.T) {
 	for scenario, fn := range map[string]func(
 		t *testing.T,
 		client api.LogClient,
+		rootClient api.LogClient,
+		nobodyClient api.LogClient,
 		config *Config,
 	){
 		"produce/consume a message to/from the log succeeds": testProduceConsume,
@@ -25,14 +27,14 @@ func TestServer(t *testing.T) {
 		"consume past log boundary fails":                    testConsumePastBoundary,
 	} {
 		t.Run(scenario, func(t *testing.T) {
-			client, config, teardown := setupTests(t, nil)
+			rootClient, nobodyClient, config, teardown := setupTests(t, nil)
 			defer teardown()
-			fn(t, client, config)
+			fn(t, rootClient, nobodyClient, config)
 		})
 	}
 }
 
-func setupTests(t *testing.T, fn func(*Config)) (client api.LogClient, cfg *Config, teardown func()) {
+func setupTests(t *testing.T, fn func(*Config)) (rootClient api.LogClient, nobodyClient api.LogClient, cfg *Config, teardown func()) {
 	t.Helper()
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -40,18 +42,31 @@ func setupTests(t *testing.T, fn func(*Config)) (client api.LogClient, cfg *Conf
 		t.Fatal(err)
 	}
 
-	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CAFile: config.CAFile,
-	})
+	newClient := func(crtPath, keyPath string) (
+		*grpc.ClientConn,
+		api.LogClient,
+		[]grpc.DialOption,
+	) {
+		tlsConfig, err := config.SetupTLSConfig(config.TLSConfig{
+			CertFile: crtPath,
+			KeyFile:  keyPath,
+			CAFile:   config.CAFile,
+			Server:   false,
+		})
 
-	if err != nil {
-		t.Fatal(err)
-	}
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	clientCreds := credentials.NewTLS(clientTLSConfig)
-	cc, err := grpc.Dial(l.Addr().String(), grpc.WithTransportCredentials(clientCreds))
-	if err != nil {
-		t.Fatal(err)
+		tlsCreds := credentials.NewTLS(tlsConfig)
+		opts := []grpc.DialOption{grpc.WithTransportCredentials(tlsCreds)}
+		conn, err := grpc.Dial(l.Addr().String(), opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		client := api.NewLogClient(conn)
+		return conn, client, opts
 	}
 
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
@@ -59,6 +74,7 @@ func setupTests(t *testing.T, fn func(*Config)) (client api.LogClient, cfg *Conf
 		KeyFile:       config.ServerKeyFile,
 		CAFile:        config.CAFile,
 		ServerAddress: l.Addr().String(),
+		Server:        true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -93,12 +109,22 @@ func setupTests(t *testing.T, fn func(*Config)) (client api.LogClient, cfg *Conf
 		server.Serve(l)
 	}()
 
-	client = api.NewLogClient(cc)
+	var rootConn *grpc.ClientConn
+	rootConn, rootClient, _ = newClient(
+		config.RootClientCertFile,
+		config.RootClientKeyFile,
+	)
 
-	return client, cfg, func() {
+	var nobodyConn *grpc.ClientConn
+	nobodyConn, nobodyClient, _ = newClient(
+		config.NobodyClientCertFile,
+		config.NobodyClientKeyFile,
+	)
+
+	return rootClient, nobodyClient, cfg, func() {
 		server.Stop()
-		cc.Close()
-		l.Close()
+		rootConn.Close()
+		nobodyConn.Close()
 		clog.Remove()
 	}
 }
