@@ -75,7 +75,7 @@ func (m *Membership) eventHandler() {
 		switch e.EventType() {
 		case serf.EventMemberJoin:
 			for _, member := range e.(serf.MemberEvent).Members {
-				if m.isLocal() {
+				if m.isLocal(member) {
 					continue
 				}
 				m.handleJoin(member)
